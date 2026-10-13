@@ -38,6 +38,12 @@ class OllamaProvider:
                 "Ollama não respondeu corretamente. Verifique o serviço, o modelo baixado e a URL. "
                 "Nenhum fallback pago será tentado automaticamente."
             ) from exc
+        if data.get("done_reason") == "length":
+            raise OllamaError(
+                f"Ollama atingiu o limite de {max_output_tokens} tokens; "
+                "a resposta foi truncada. Aumente SOLARIA_MAX_OUTPUT_TOKENS "
+                "ou solicite uma resposta mais curta."
+            )
 
         text = ((data.get("message") or {}).get("content") or "").strip()
         if not text:
