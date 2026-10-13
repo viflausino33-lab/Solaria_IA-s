@@ -19,6 +19,7 @@ class OllamaProvider:
         url = self.settings.ollama_base_url.rstrip("/") + "/api/chat"
         payload = {
             "model": self.model,
+            "think": False,
             "messages": [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
