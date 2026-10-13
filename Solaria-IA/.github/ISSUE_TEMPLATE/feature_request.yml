@@ -1,0 +1,22 @@
+name: Feature request
+description: Propose a capability or architectural change
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem to solve
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed approach
+    validations:
+      required: true
+  - type: textarea
+    id: tradeoffs
+    attributes:
+      label: Expected impact on quality, cost, latency, memory and privacy
+    validations:
+      required: true

@@ -1,0 +1,28 @@
+# Catálogo de referência para uma futura fase multi-provedor.
+# Não usar preços sem atualizar e registrar fonte/data. Preço null deve bloquear cloud no modo estrito.
+models:
+  - id: ollama/qwen3:4b
+    provider: ollama
+    model_name: qwen3:4b
+    local: true
+    enabled: false  # ativar após instalar o modelo e medir o hardware
+    capabilities: [general, reasoning, coding]
+    max_context_tokens: null  # medir/confirmar para a tag exata
+    estimated_memory_gb: null # medir no hardware, não inventar
+    input_usd_per_million_tokens: 0.0 # não significa custo computacional zero
+    output_usd_per_million_tokens: 0.0
+    price_checked_at: null
+    price_source: null
+
+  - id: YOUR_PROVIDER_MODEL
+    provider: YOUR_PROVIDER
+    model_name: YOUR_MODEL_ID
+    local: false
+    enabled: false
+    capabilities: [general]
+    max_context_tokens: null
+    estimated_memory_gb: null
+    input_usd_per_million_tokens: null
+    output_usd_per_million_tokens: null
+    price_checked_at: null
+    price_source: null
