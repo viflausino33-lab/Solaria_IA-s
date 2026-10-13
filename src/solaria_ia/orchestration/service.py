@@ -1,3 +1,4 @@
+import re
 import time
 import uuid
 
@@ -11,9 +12,13 @@ ANSWER_SYSTEM = (
     "Declare incertezas; não invente fatos nem afirme ter usado ferramentas que não possui."
 )
 CRITIC_SYSTEM = (
-    "Você é um revisor independente. Avalie o rascunho apenas contra a tarefa. Procure erros materiais, "
-    "lacunas, premissas frágeis e riscos. Se não houver correção material, comece exatamente com APPROVED. "
-    "Se precisar de alteração, comece com REVISE e enumere apenas os pontos indispensáveis. Não reescreva tudo."
+    "Você é um revisor independente. Compare o rascunho com a tarefa original. "
+    "Verifique erros materiais, lacunas importantes, premissas frágeis e riscos. "
+    "A primeira linha deve começar com exatamente um marcador: APPROVED ou REVISE. "
+    "Use APPROVED se não houver correção material necessária. "
+    "Use REVISE somente quando houver correções materiais necessárias. "
+    "Se usar REVISE, liste no máximo 3 correções indispensáveis, em itens curtos. "
+    "Não escreva introdução antes do marcador e não reescreva o rascunho inteiro."
 )
 FINAL_SYSTEM = (
     "Você é o sintetizador final. Corrija o rascunho apenas com base na tarefa e na revisão fornecidas. "
@@ -23,7 +28,16 @@ FINAL_SYSTEM = (
 
 def _approx_tokens(text: str) -> int:
     return max(1, (len(text) + 3) // 4)
-
+def _critic_approved(text: str) -> bool:
+    first_line = next(
+        (line.strip() for line in text.splitlines() if line.strip()),
+        "",
+    )
+    return re.match(
+        r"^\**\s*APPROVED\b",
+        first_line,
+        re.IGNORECASE,
+    ) is not None
 
 class OrchestrationError(RuntimeError):
     pass
@@ -74,7 +88,7 @@ class TaskService:
                 max_output_tokens=min(max_output_tokens, 400),
                 steps=steps,
             )
-            if not review_result.text.lstrip().startswith("APPROVED"):
+            if not _critic_approved(review_result.text):
                 # Only pay the synthesis/revision call when the critic signals material changes.
                 final_prompt = (
                     f"TAREFA ORIGINAL:\n{request.task}\n\nRASCUNHO:\n{answer}\n\n"

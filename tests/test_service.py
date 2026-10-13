@@ -11,15 +11,21 @@ class CountingProvider:
     name = "mock"
     model = "mock-test"
 
-    def __init__(self):
+    def __init__(
+        self,
+        critic_response="**APPROVED** — sem correções materiais.",
+    ):
         self.calls = []
+        self.critic_response = critic_response
 
     async def generate(self, *, system_prompt, user_prompt, max_output_tokens):
         self.calls.append((system_prompt, user_prompt, max_output_tokens))
+
         if system_prompt.startswith("Você é um revisor"):
-            text = "APPROVED — sem correções materiais."
+            text = self.critic_response
         else:
             text = "Resposta de teste."
+
         return Generation(text, 10, 5, self.name, self.model)
 
 
@@ -49,3 +55,27 @@ async def test_input_limit_rejects_before_provider_call():
     with pytest.raises(ValueError):
         await service.run(TaskRequest(task="x" * 501))
     assert provider.calls == []
+@pytest.mark.asyncio
+async def test_review_runs_synthesis_when_critic_requests_revision():
+    provider = CountingProvider(
+        critic_response=(
+            "REVISE\n"
+            "- Especifique uma medida preventiva concreta."
+        )
+    )
+    service = TaskService(Settings(provider_mode="mock"), provider)
+
+    result = await service.run(
+        TaskRequest(
+            task="Explique Kanban",
+            collaboration="review",
+        )
+    )
+
+    assert len(provider.calls) == 3
+    assert [step.role for step in result.steps] == [
+        "specialist",
+        "critic",
+        "synthesizer",
+    ]
+    assert result.answer == "Resposta de teste."
