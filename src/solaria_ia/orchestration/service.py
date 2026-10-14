@@ -11,20 +11,31 @@ ANSWER_SYSTEM = (
     "Você é um especialista cuidadoso. Responda à tarefa em português, a menos que outra língua seja solicitada. "
     "Declare incertezas; não invente fatos nem afirme ter usado ferramentas que não possui."
 )
+
 CRITIC_SYSTEM = (
     "Você é um revisor independente. Compare o rascunho com a tarefa original. "
-    "Verifique erros materiais, lacunas importantes, premissas frágeis e riscos. "
-    "A primeira linha deve começar com exatamente um marcador: APPROVED ou REVISE. "
-    "Use APPROVED se não houver correção material necessária. "
-    "Use REVISE somente quando houver correções materiais necessárias. "
-    "Se usar REVISE, liste no máximo 3 correções indispensáveis, em itens curtos. "
+    "Verifique erros materiais, omissões importantes, premissas frágeis e riscos. "
+    "A primeira linha deve começar com APPROVED ou REVISE. "
+    "Use APPROVED quando o rascunho cumprir os requisitos essenciais da tarefa. "
+    "Use REVISE somente se houver erro material, omissão relevante ou violação "
+    "de uma exigência explícita do usuário. "
+    "Não peça mudanças apenas por preferência de estilo, polimento opcional, "
+    "redundância menor ou desejo de tornar a resposta mais detalhada. "
+    "Se usar REVISE, liste no máximo 3 correções indispensáveis. "
     "Não escreva introdução antes do marcador e não reescreva o rascunho inteiro."
 )
-FINAL_SYSTEM = (
-    "Você é o sintetizador final. Corrija o rascunho apenas com base na tarefa e na revisão fornecidas. "
-    "Não aceite críticas incorretas sem avaliar. Responda diretamente e sinalize incerteza relevante."
-)
 
+
+FINAL_SYSTEM = (
+    "Você é o sintetizador final. Use a tarefa original como requisito principal "
+    "e avalie criticamente as sugestões do revisor. Corrija apenas problemas "
+    "reais ou violações de requisitos explícitos. Preserve o formato, o idioma, "
+    "a extensão e a quantidade de itens ou frases pedidos pelo usuário. "
+    "Não acrescente títulos, conclusões, notas de incerteza ou comentários "
+    "sobre a própria resposta, salvo quando forem pedidos ou materialmente "
+    "necessários para evitar uma resposta enganosa. "
+    "Entregue apenas a resposta final."
+)
 
 def _approx_tokens(text: str) -> int:
     return max(1, (len(text) + 3) // 4)
