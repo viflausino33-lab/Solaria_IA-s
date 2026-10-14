@@ -1,4 +1,7 @@
+from pathlib import Path
+
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse
 
 from solaria_ia.orchestration.service import OrchestrationError, TaskService
 from solaria_ia.providers.mock import MockProvider
@@ -14,6 +17,13 @@ app = FastAPI(
 )
 provider = MockProvider() if settings.provider_mode == "mock" else OllamaProvider(settings)
 service = TaskService(settings=settings, provider=provider)
+WEB_INDEX = Path(__file__).parent / "static" / "index.html"
+
+
+@app.get("/", include_in_schema=False)
+def web_interface() -> FileResponse:
+    """Serve the lightweight web UI from the same origin as the API."""
+    return FileResponse(WEB_INDEX, media_type="text/html")
 
 
 @app.get("/health")
@@ -38,4 +48,7 @@ async def create_task(request: TaskRequest) -> TaskResponse:
     except OllamaError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     except Exception as exc:  # no silent fallback to a paid provider
-        raise HTTPException(status_code=500, detail="Falha interna; nenhuma troca automática de provedor foi realizada.") from exc
+        raise HTTPException(
+            status_code=500,
+            detail="Falha interna; nenhuma troca automática de provedor foi realizada.",
+        ) from exc
