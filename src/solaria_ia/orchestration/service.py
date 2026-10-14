@@ -28,16 +28,19 @@ FINAL_SYSTEM = (
 
 def _approx_tokens(text: str) -> int:
     return max(1, (len(text) + 3) // 4)
-def _critic_approved(text: str) -> bool:
+def _critic_decision(text: str) -> str:
     first_line = next(
         (line.strip() for line in text.splitlines() if line.strip()),
         "",
     )
-    return re.match(
-        r"^\**\s*APPROVED\b",
-        first_line,
-        re.IGNORECASE,
-    ) is not None
+
+    if re.match(r"^\**\s*APPROVED\b", first_line, re.IGNORECASE):
+        return "approved"
+
+    if re.match(r"^\**\s*REVISE\b", first_line, re.IGNORECASE):
+        return "revise"
+
+    return "unknown"
 
 class OrchestrationError(RuntimeError):
     pass
@@ -88,8 +91,18 @@ class TaskService:
                 max_output_tokens=min(max_output_tokens, 400),
                 steps=steps,
             )
-            if not _critic_approved(review_result.text):
-                # Only pay the synthesis/revision call when the critic signals material changes.
+            critic_decision = _critic_decision(review_result.text)
+
+            if critic_decision == "approved":
+                route.reason += "; crítico marcou APPROVED; síntese dispensada"
+            else:
+                if critic_decision == "revise":
+                    route.reason += "; crítico marcou REVISE; síntese executada"
+                else:
+                    route.reason += (
+                        "; marcador do crítico inválido ou ausente; "
+                        "síntese executada por segurança"
+                    )
                 final_prompt = (
                     f"TAREFA ORIGINAL:\n{request.task}\n\nRASCUNHO:\n{answer}\n\n"
                     f"CRÍTICA:\n{review_result.text}\n\nProduza a resposta final corrigida."

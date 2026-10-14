@@ -45,7 +45,7 @@ async def test_review_stops_after_approved_critic():
     result = await service.run(TaskRequest(task="Explique Kanban", collaboration="review"))
     assert len(provider.calls) == 2
     assert [step.role for step in result.steps] == ["specialist", "critic"]
-
+    assert "crítico marcou APPROVED" in result.route.reason
 
 @pytest.mark.asyncio
 async def test_input_limit_rejects_before_provider_call():
@@ -79,3 +79,24 @@ async def test_review_runs_synthesis_when_critic_requests_revision():
         "synthesizer",
     ]
     assert result.answer == "Resposta de teste."
+    assert "crítico marcou REVISE" in result.route.reason
+    
+@pytest.mark.asyncio
+async def test_review_synthesizes_when_critic_marker_is_unknown():
+    provider = CountingProvider(
+        critic_response="A resposta parece adequada, mas tenho uma observação."
+    )
+    service = TaskService(Settings(provider_mode="mock"), provider)
+
+    result = await service.run(
+        TaskRequest(
+            task="Explique Kanban",
+            collaboration="review",
+        )
+    )
+
+    assert len(provider.calls) == 3
+    assert (
+        "marcador do crítico inválido ou ausente"
+        in result.route.reason
+    )
