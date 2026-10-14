@@ -1,3 +1,4 @@
+import asyncio
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
@@ -15,8 +16,23 @@ app = FastAPI(
     version="0.1.0",
     description="Orquestração local-first com roteamento enxuto e colaboração condicional.",
 )
-provider = MockProvider() if settings.provider_mode == "mock" else OllamaProvider(settings)
-service = TaskService(settings=settings, provider=provider)
+if settings.provider_mode == "mock":
+    provider = MockProvider()
+    reviewer_provider = provider
+else:
+    # Os dois provedores compartilham uma trava para serializar inferências.
+    inference_lock = asyncio.Lock()
+    provider = OllamaProvider(settings, inference_lock=inference_lock)
+    reviewer_provider = OllamaProvider(
+        settings,
+        model=settings.ollama_review_model,
+        inference_lock=inference_lock,
+    )
+service = TaskService(
+    settings=settings,
+    provider=provider,
+    reviewer_provider=reviewer_provider,
+)
 WEB_INDEX = Path(__file__).parent / "static" / "index.html"
 
 
@@ -32,6 +48,9 @@ def health() -> dict[str, str | int]:
         "status": "ok",
         "provider_mode": settings.provider_mode,
         "model": settings.ollama_model if settings.provider_mode == "ollama" else "mock-v1",
+        "review_model": (
+            settings.ollama_review_model if settings.provider_mode == "ollama" else "mock-v1"
+        ),
         "local_parallelism": settings.local_parallelism,
         "max_calls_per_run": settings.max_calls_per_run,
     }

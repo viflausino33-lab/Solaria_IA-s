@@ -48,6 +48,71 @@ async def test_review_stops_after_approved_critic():
 
 
 @pytest.mark.asyncio
+async def test_review_uses_dedicated_reviewer_with_limited_tokens():
+    primary = CountingProvider()
+    primary.model = "qwen3:1.7b"
+
+    reviewer = CountingProvider()
+    reviewer.model = "gemma3:1b"
+
+    settings = Settings(
+        provider_mode="mock",
+        max_output_tokens=800,
+        review_max_output_tokens=160,
+    )
+    service = TaskService(
+        settings,
+        primary,
+        reviewer_provider=reviewer,
+    )
+
+    result = await service.run(TaskRequest(task="Explique Kanban", collaboration="review"))
+
+    assert [step.model for step in result.steps] == [
+        "qwen3:1.7b",
+        "gemma3:1b",
+    ]
+    assert [step.role for step in result.steps] == ["specialist", "critic"]
+    assert len(primary.calls) == 1
+    assert len(reviewer.calls) == 1
+    assert reviewer.calls[0][2] == 160
+
+
+@pytest.mark.asyncio
+async def test_revision_returns_to_primary_provider():
+    primary = CountingProvider()
+    primary.model = "qwen3:1.7b"
+
+    reviewer = CountingProvider(critic_response="REVISE\\n- Corrigir uma omissão importante.")
+    reviewer.model = "gemma3:1b"
+
+    service = TaskService(
+        Settings(
+            provider_mode="mock",
+            max_output_tokens=800,
+            review_max_output_tokens=160,
+        ),
+        primary,
+        reviewer_provider=reviewer,
+    )
+
+    result = await service.run(TaskRequest(task="Explique Kanban", collaboration="review"))
+
+    assert [step.model for step in result.steps] == [
+        "qwen3:1.7b",
+        "gemma3:1b",
+        "qwen3:1.7b",
+    ]
+    assert [step.role for step in result.steps] == [
+        "specialist",
+        "critic",
+        "synthesizer",
+    ]
+    assert len(primary.calls) == 2
+    assert len(reviewer.calls) == 1
+
+
+@pytest.mark.asyncio
 async def test_input_limit_rejects_before_provider_call():
     provider = CountingProvider()
     settings = Settings(provider_mode="mock", max_input_chars=500)

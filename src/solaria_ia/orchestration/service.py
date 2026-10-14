@@ -64,9 +64,15 @@ class OrchestrationError(RuntimeError):
 
 
 class TaskService:
-    def __init__(self, settings: Settings, provider: Provider) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        provider: Provider,
+        reviewer_provider: Provider | None = None,
+    ) -> None:
         self.settings = settings
         self.provider = provider
+        self.reviewer_provider = reviewer_provider or provider
 
     async def run(self, request: TaskRequest) -> TaskResponse:
         if len(request.task) > self.settings.max_input_chars:
@@ -110,8 +116,12 @@ class TaskService:
                 role="critic",
                 system_prompt=CRITIC_SYSTEM,
                 user_prompt=review_prompt,
-                max_output_tokens=min(max_output_tokens, 400),
+                max_output_tokens=min(
+                    max_output_tokens,
+                    self.settings.review_max_output_tokens,
+                ),
                 steps=steps,
+                provider=self.reviewer_provider,
             )
             critic_decision = _critic_decision(review_result.text)
 
@@ -164,9 +174,11 @@ class TaskService:
         user_prompt: str,
         max_output_tokens: int,
         steps: list[StepMetric],
+        provider: Provider | None = None,
     ):
         start = time.perf_counter()
-        result = await self.provider.generate(
+        active_provider = provider or self.provider
+        result = await active_provider.generate(
             system_prompt=system_prompt,
             user_prompt=user_prompt,
             max_output_tokens=max_output_tokens,

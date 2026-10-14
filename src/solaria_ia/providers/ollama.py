@@ -1,3 +1,5 @@
+import asyncio
+
 import httpx
 
 from solaria_ia.providers.base import Generation
@@ -11,9 +13,16 @@ class OllamaError(RuntimeError):
 class OllamaProvider:
     name = "ollama"
 
-    def __init__(self, settings: Settings) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        *,
+        model: str | None = None,
+        inference_lock: asyncio.Lock | None = None,
+    ) -> None:
         self.settings = settings
-        self.model = settings.ollama_model
+        self.model = model or settings.ollama_model
+        self.inference_lock = inference_lock if inference_lock is not None else asyncio.Lock()
 
     async def generate(
         self, *, system_prompt: str, user_prompt: str, max_output_tokens: int
@@ -31,10 +40,13 @@ class OllamaProvider:
             "options": {"num_predict": max_output_tokens},
         }
         try:
-            async with httpx.AsyncClient(timeout=self.settings.request_timeout_seconds) as client:
-                response = await client.post(url, json=payload)
-                response.raise_for_status()
-                data = response.json()
+            async with self.inference_lock:
+                async with httpx.AsyncClient(
+                    timeout=self.settings.request_timeout_seconds
+                ) as client:
+                    response = await client.post(url, json=payload)
+                    response.raise_for_status()
+                    data = response.json()
         except (httpx.HTTPError, ValueError) as exc:
             raise OllamaError(
                 "Ollama não respondeu corretamente. Verifique o serviço, o modelo baixado e a URL. "
