@@ -1,4 +1,3 @@
-
 from fastapi.testclient import TestClient
 
 import solaria_ia.main as main
@@ -7,9 +6,7 @@ from solaria_ia.providers.ollama import OllamaError
 
 class FailingService:
     async def run(self, request):
-        raise OllamaError(
-            "Ollama atingiu o limite de 300 tokens; a resposta foi truncada."
-        )
+        raise OllamaError("Ollama atingiu o limite de 300 tokens; a resposta foi truncada.")
 
 
 def test_truncated_response_is_reported_as_error(monkeypatch):

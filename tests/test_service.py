@@ -2,7 +2,6 @@ import pytest
 
 from solaria_ia.orchestration.service import TaskService
 from solaria_ia.providers.base import Generation
-from solaria_ia.providers.mock import MockProvider
 from solaria_ia.schemas import TaskRequest
 from solaria_ia.settings import Settings
 
@@ -47,6 +46,7 @@ async def test_review_stops_after_approved_critic():
     assert [step.role for step in result.steps] == ["specialist", "critic"]
     assert "crítico marcou APPROVED" in result.route.reason
 
+
 @pytest.mark.asyncio
 async def test_input_limit_rejects_before_provider_call():
     provider = CountingProvider()
@@ -55,13 +55,12 @@ async def test_input_limit_rejects_before_provider_call():
     with pytest.raises(ValueError):
         await service.run(TaskRequest(task="x" * 501))
     assert provider.calls == []
+
+
 @pytest.mark.asyncio
 async def test_review_runs_synthesis_when_critic_requests_revision():
     provider = CountingProvider(
-        critic_response=(
-            "REVISE\n"
-            "- Especifique uma medida preventiva concreta."
-        )
+        critic_response=("REVISE\n- Especifique uma medida preventiva concreta.")
     )
     service = TaskService(Settings(provider_mode="mock"), provider)
 
@@ -80,7 +79,8 @@ async def test_review_runs_synthesis_when_critic_requests_revision():
     ]
     assert result.answer == "Resposta de teste."
     assert "crítico marcou REVISE" in result.route.reason
-    
+
+
 @pytest.mark.asyncio
 async def test_review_synthesizes_when_critic_marker_is_unknown():
     provider = CountingProvider(
@@ -96,7 +96,4 @@ async def test_review_synthesizes_when_critic_marker_is_unknown():
     )
 
     assert len(provider.calls) == 3
-    assert (
-        "marcador do crítico inválido ou ausente"
-        in result.route.reason
-    )
+    assert "marcador do crítico inválido ou ausente" in result.route.reason

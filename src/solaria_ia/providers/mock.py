@@ -7,7 +7,9 @@ class MockProvider:
     name = "mock"
     model = "mock-v1"
 
-    async def generate(self, *, system_prompt: str, user_prompt: str, max_output_tokens: int) -> Generation:
+    async def generate(
+        self, *, system_prompt: str, user_prompt: str, max_output_tokens: int
+    ) -> Generation:
         text = (
             "[MOCK MODE — nenhuma IA foi chamada]\n"
             "Este é um retorno simulado para testar o fluxo de orquestração.\n\n"

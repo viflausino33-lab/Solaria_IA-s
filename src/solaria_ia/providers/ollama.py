@@ -15,7 +15,9 @@ class OllamaProvider:
         self.settings = settings
         self.model = settings.ollama_model
 
-    async def generate(self, *, system_prompt: str, user_prompt: str, max_output_tokens: int) -> Generation:
+    async def generate(
+        self, *, system_prompt: str, user_prompt: str, max_output_tokens: int
+    ) -> Generation:
         url = self.settings.ollama_base_url.rstrip("/") + "/api/chat"
         payload = {
             "model": self.model,
@@ -53,8 +55,12 @@ class OllamaProvider:
         output_tokens = data.get("eval_count")
         return Generation(
             text=text,
-            input_tokens_estimated=int(prompt_tokens) if prompt_tokens is not None else max(1, len(system_prompt + user_prompt) // 4),
-            output_tokens_estimated=int(output_tokens) if output_tokens is not None else max(1, len(text) // 4),
+            input_tokens_estimated=int(prompt_tokens)
+            if prompt_tokens is not None
+            else max(1, len(system_prompt + user_prompt) // 4),
+            output_tokens_estimated=int(output_tokens)
+            if output_tokens is not None
+            else max(1, len(text) // 4),
             provider=self.name,
             model=self.model,
         )

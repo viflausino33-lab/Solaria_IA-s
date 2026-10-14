@@ -12,14 +12,18 @@ def test_simple_task_uses_single_call_by_default():
 
 def test_explicit_review_is_respected():
     settings = Settings(provider_mode="mock")
-    route = classify_task(TaskRequest(task="Explique uma estratégia", collaboration="review"), settings)
+    route = classify_task(
+        TaskRequest(task="Explique uma estratégia", collaboration="review"), settings
+    )
     assert route.collaboration == "review"
     assert "solicitado" in route.reason
 
 
 def test_high_consequence_long_task_routes_to_review():
     settings = Settings(provider_mode="mock")
-    task = "Planeje uma migração de banco de dados de produção com segurança. " + ("Detalhe e valide cada etapa.\n" * 30)
+    task = "Planeje uma migração de banco de dados de produção com segurança. " + (
+        "Detalhe e valide cada etapa.\n" * 30
+    )
     route = classify_task(TaskRequest(task=task), settings)
     assert route.consequence == "high"
     assert route.collaboration == "review"

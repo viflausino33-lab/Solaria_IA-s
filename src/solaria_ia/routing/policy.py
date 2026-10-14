@@ -1,16 +1,74 @@
 from solaria_ia.schemas import RouteDecision, TaskRequest
 from solaria_ia.settings import Settings
 
-
 HIGH_CONSEQUENCE = {
-    "production", "produção", "deploy", "deployment", "delete", "deletar", "apagar",
-    "payment", "pagamento", "financial", "financeiro", "legal", "contrato",
-    "security", "segurança", "credential", "credencial", "database migration", "migração",
+    "production",
+    "produção",
+    "deploy",
+    "deployment",
+    "delete",
+    "deletar",
+    "apagar",
+    "payment",
+    "pagamento",
+    "financial",
+    "financeiro",
+    "legal",
+    "contrato",
+    "security",
+    "segurança",
+    "credential",
+    "credencial",
+    "database migration",
+    "migração",
 }
-CODING = {"code", "código", "python", "bug", "debug", "function", "função", "api", "refactor", "refatorar", "testes"}
-RESEARCH = {"pesquise", "pesquisa", "research", "fontes", "referências", "latest", "atual", "comparar", "compare", "literature"}
-ANALYSIS = {"analise", "análise", "evaluate", "avaliar", "trade-off", "tradeoff", "risco", "impacto", "otimizar", "optimization"}
-PLANNING = {"planeje", "planejamento", "roadmap", "etapas", "estratégia", "strategy", "arquitetura", "architecture"}
+CODING = {
+    "code",
+    "código",
+    "python",
+    "bug",
+    "debug",
+    "function",
+    "função",
+    "api",
+    "refactor",
+    "refatorar",
+    "testes",
+}
+RESEARCH = {
+    "pesquise",
+    "pesquisa",
+    "research",
+    "fontes",
+    "referências",
+    "latest",
+    "atual",
+    "comparar",
+    "compare",
+    "literature",
+}
+ANALYSIS = {
+    "analise",
+    "análise",
+    "evaluate",
+    "avaliar",
+    "trade-off",
+    "tradeoff",
+    "risco",
+    "impacto",
+    "otimizar",
+    "optimization",
+}
+PLANNING = {
+    "planeje",
+    "planejamento",
+    "roadmap",
+    "etapas",
+    "estratégia",
+    "strategy",
+    "arquitetura",
+    "architecture",
+}
 
 
 def _contains(text: str, words: set[str]) -> bool:
@@ -41,12 +99,28 @@ def classify_task(request: TaskRequest, settings: Settings) -> RouteDecision:
         score += 1
     if task.count("\n") >= 8:
         score += 1
-    if _contains(lower, {"step by step", "passo a passo", "comprehensive", "detalhado", "prove", "demonstre", "architecture", "arquitetura"}):
+    if _contains(
+        lower,
+        {
+            "step by step",
+            "passo a passo",
+            "comprehensive",
+            "detalhado",
+            "prove",
+            "demonstre",
+            "architecture",
+            "arquitetura",
+        },
+    ):
         score += 1
     if _contains(lower, HIGH_CONSEQUENCE):
         score += 1
     complexity = "low" if score <= 1 else ("medium" if score <= 3 else "high")
-    consequence = "high" if _contains(lower, HIGH_CONSEQUENCE) else ("medium" if task_type in {"coding", "research", "analysis", "planning"} else "low")
+    consequence = (
+        "high"
+        if _contains(lower, HIGH_CONSEQUENCE)
+        else ("medium" if task_type in {"coding", "research", "analysis", "planning"} else "low")
+    )
 
     if request.collaboration == "single":
         collaboration = "single"
@@ -59,7 +133,10 @@ def classify_task(request: TaskRequest, settings: Settings) -> RouteDecision:
         reason = "consequência alta aciona revisão sequencial, mesmo se a tarefa parecer curta"
     else:
         collaboration = "single"
-        reason = "uma única chamada é a opção padrão; não há evidência suficiente para justificar custo extra"
+        reason = (
+            "uma única chamada é a opção padrão; não há evidência suficiente "
+            "para justificar custo extra"
+        )
 
     if request.privacy == "local_only":
         reason += "; privacidade local-only respeitada"

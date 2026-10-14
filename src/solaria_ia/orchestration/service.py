@@ -4,12 +4,14 @@ import uuid
 
 from solaria_ia.providers.base import Provider
 from solaria_ia.routing.policy import classify_task
-from solaria_ia.schemas import RouteDecision, StepMetric, TaskRequest, TaskResponse
+from solaria_ia.schemas import StepMetric, TaskRequest, TaskResponse
 from solaria_ia.settings import Settings
 
 ANSWER_SYSTEM = (
-    "Você é um especialista cuidadoso. Responda à tarefa em português, a menos que outra língua seja solicitada. "
-    "Declare incertezas; não invente fatos nem afirme ter usado ferramentas que não possui."
+    "Você é um especialista cuidadoso. Responda à tarefa em português, "
+    "a menos que outra língua seja solicitada. "
+    "Declare incertezas; não invente fatos nem afirme ter usado "
+    "ferramentas que não possui."
 )
 
 CRITIC_SYSTEM = (
@@ -37,8 +39,11 @@ FINAL_SYSTEM = (
     "Entregue apenas a resposta final."
 )
 
+
 def _approx_tokens(text: str) -> int:
     return max(1, (len(text) + 3) // 4)
+
+
 def _critic_decision(text: str) -> str:
     first_line = next(
         (line.strip() for line in text.splitlines() if line.strip()),
@@ -53,6 +58,7 @@ def _critic_decision(text: str) -> str:
 
     return "unknown"
 
+
 class OrchestrationError(RuntimeError):
     pass
 
@@ -64,7 +70,10 @@ class TaskService:
 
     async def run(self, request: TaskRequest) -> TaskResponse:
         if len(request.task) > self.settings.max_input_chars:
-            raise ValueError(f"A tarefa excede o limite configurado de {self.settings.max_input_chars} caracteres.")
+            raise ValueError(
+                "A tarefa excede o limite configurado de "
+                f"{self.settings.max_input_chars} caracteres."
+            )
         if request.max_output_tokens is not None:
             max_output_tokens = min(request.max_output_tokens, self.settings.max_output_tokens)
         else:
@@ -75,8 +84,10 @@ class TaskService:
         planned_calls = 1 if route.collaboration == "single" else 3
         if planned_calls > self.settings.max_calls_per_run:
             raise OrchestrationError(
-                f"O fluxo exige até {planned_calls} chamadas, mas SOLARIA_MAX_CALLS_PER_RUN="
-                f"{self.settings.max_calls_per_run}. Reduza o fluxo ou aumente o limite conscientemente."
+                f"O fluxo exige até {planned_calls} chamadas, mas "
+                "SOLARIA_MAX_CALLS_PER_RUN="
+                f"{self.settings.max_calls_per_run}. "
+                "Reduza o fluxo ou aumente o limite conscientemente."
             )
 
         run_id = str(uuid.uuid4())
@@ -111,8 +122,7 @@ class TaskService:
                     route.reason += "; crítico marcou REVISE; síntese executada"
                 else:
                     route.reason += (
-                        "; marcador do crítico inválido ou ausente; "
-                        "síntese executada por segurança"
+                        "; marcador do crítico inválido ou ausente; síntese executada por segurança"
                     )
                 final_prompt = (
                     f"TAREFA ORIGINAL:\n{request.task}\n\nRASCUNHO:\n{answer}\n\n"
@@ -131,7 +141,10 @@ class TaskService:
         note = (
             "Modo mock: nenhuma inferência real foi executada."
             if self.provider.name == "mock"
-            else "Execução local via Ollama; métricas de tokens podem ser estimadas quando o runtime não as retorna."
+            else (
+                "Execução local via Ollama; métricas de tokens podem ser estimadas "
+                "quando o runtime não as retorna."
+            )
         )
         return TaskResponse(
             run_id=run_id,
@@ -144,7 +157,13 @@ class TaskService:
         )
 
     async def _generate(
-        self, *, role: str, system_prompt: str, user_prompt: str, max_output_tokens: int, steps: list[StepMetric]
+        self,
+        *,
+        role: str,
+        system_prompt: str,
+        user_prompt: str,
+        max_output_tokens: int,
+        steps: list[StepMetric],
     ):
         start = time.perf_counter()
         result = await self.provider.generate(
@@ -159,8 +178,10 @@ class TaskService:
                 provider=result.provider,
                 model=result.model,
                 elapsed_ms=elapsed,
-                input_tokens_estimated=result.input_tokens_estimated or _approx_tokens(system_prompt + user_prompt),
-                output_tokens_estimated=result.output_tokens_estimated or _approx_tokens(result.text),
+                input_tokens_estimated=result.input_tokens_estimated
+                or _approx_tokens(system_prompt + user_prompt),
+                output_tokens_estimated=result.output_tokens_estimated
+                or _approx_tokens(result.text),
             )
         )
         return result
