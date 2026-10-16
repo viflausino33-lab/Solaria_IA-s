@@ -168,6 +168,103 @@ async def test_gemini_daily_call_limit_blocks_external_call(tmp_path):
     assert ledger.usage("gemini")["tokens_reserved"] == 0
 
 
+@pytest.mark.asyncio
+async def test_copilot_usage_uses_copilot_specific_daily_limits(tmp_path):
+    settings = make_settings(
+        review_provider="copilot",
+        copilot_enabled=True,
+        copilot_free_tier_confirmed=True,
+        copilot_daily_call_limit=3,
+        copilot_daily_token_limit=3333,
+        gemini_daily_call_limit=0,
+        gemini_daily_token_limit=1000,
+    )
+    primary = StubProvider("ollama", "qwen3:1.7b", "Rascunho inicial.")
+    local_reviewer = StubProvider("ollama", "gemma3:1b", "APPROVED")
+    external = StubProvider("copilot", settings.copilot_model, "APPROVED")
+
+    class RecordingLedger(DailyUsageLedger):
+        def reserve(self, *, provider, estimated_tokens, call_limit, token_limit):
+            self.last_reservation = {
+                "provider": provider,
+                "call_limit": call_limit,
+                "token_limit": token_limit,
+            }
+            return super().reserve(
+                provider=provider,
+                estimated_tokens=estimated_tokens,
+                call_limit=call_limit,
+                token_limit=token_limit,
+            )
+
+    ledger = RecordingLedger(str(tmp_path / "usage.sqlite3"))
+    service = TaskService(
+        settings,
+        primary,
+        reviewer_provider=local_reviewer,
+        external_reviewer_provider=external,
+        usage_ledger=ledger,
+    )
+
+    await service.run(
+        TaskRequest(
+            task="Explique Kanban",
+            collaboration="review",
+            privacy="standard",
+        )
+    )
+
+    assert len(external.calls) == 1
+    assert local_reviewer.calls == []
+    assert ledger.last_reservation == {
+        "provider": "copilot",
+        "call_limit": 3,
+        "token_limit": 3333,
+    }
+
+    usage = ledger.usage("copilot")
+    assert usage["calls"] == 1
+    assert usage["tokens_used"] > 0
+    assert usage["tokens_reserved"] == 0
+
+
+@pytest.mark.asyncio
+async def test_copilot_daily_call_limit_blocks_external_call(tmp_path):
+    settings = make_settings(
+        review_provider="copilot",
+        copilot_enabled=True,
+        copilot_free_tier_confirmed=True,
+        copilot_daily_call_limit=0,
+        gemini_daily_call_limit=10,
+    )
+    primary = StubProvider("ollama", "qwen3:1.7b", "Rascunho inicial.")
+    local_reviewer = StubProvider("ollama", "gemma3:1b", "APPROVED")
+    external = StubProvider("copilot", settings.copilot_model, "APPROVED")
+    ledger = DailyUsageLedger(str(tmp_path / "usage.sqlite3"))
+
+    service = TaskService(
+        settings,
+        primary,
+        reviewer_provider=local_reviewer,
+        external_reviewer_provider=external,
+        usage_ledger=ledger,
+    )
+
+    with pytest.raises(QuotaExceededError, match="Limite diário"):
+        await service.run(
+            TaskRequest(
+                task="Explique Kanban",
+                collaboration="review",
+                privacy="standard",
+            )
+        )
+
+    assert len(primary.calls) == 1
+    assert external.calls == []
+    assert local_reviewer.calls == []
+    assert ledger.usage("copilot")["tokens_reserved"] == 0
+
+
 @pytest.mark.parametrize(
     ("overrides", "message"),
     [
@@ -181,7 +278,7 @@ async def test_gemini_daily_call_limit_blocks_external_call(tmp_path):
         ),
         (
             {"copilot_enabled": True, "copilot_free_tier_confirmed": True},
-            "adaptador GitHub Copilot ainda não está implementado",
+            "adaptador GitHub Copilot ou controle de cota diário",
         ),
     ],
 )

@@ -26,7 +26,7 @@ dev = [
 ]
 # Future cloud adapter: it must remain opt-in and guarded by a tested budget ledger.
 cloud = ["litellm>=1.0"]
-copilot = ["github-copilot-sdk"]
+copilot = ["github-copilot-sdk==1.0.22"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

@@ -9,6 +9,11 @@ from solaria_ia.orchestration.service import (
     QuotaExceededError,
     TaskService,
 )
+from solaria_ia.providers.copilot import (
+    CopilotError,
+    CopilotProvider,
+    CopilotQuotaError,
+)
 from solaria_ia.providers.gemini import (
     GeminiError,
     GeminiProvider,
@@ -47,6 +52,13 @@ if (
 ):
     external_reviewer_provider = GeminiProvider(settings)
     usage_ledger = DailyUsageLedger(settings.daily_usage_db_path)
+elif (
+    settings.review_provider == "copilot"
+    and settings.copilot_enabled
+    and settings.copilot_free_tier_confirmed
+):
+    external_reviewer_provider = CopilotProvider(settings)
+    usage_ledger = DailyUsageLedger(settings.daily_usage_db_path)
 
 service = TaskService(
     settings=settings,
@@ -72,8 +84,15 @@ def health() -> dict[str, str | int | bool]:
         and settings.gemini_free_tier_confirmed
         and settings.gemini_api_key is not None
     )
+    copilot_active = (
+        settings.review_provider == "copilot"
+        and settings.copilot_enabled
+        and settings.copilot_free_tier_confirmed
+    )
     if gemini_active:
         review_model = settings.gemini_model
+    elif copilot_active:
+        review_model = settings.copilot_model
     elif settings.provider_mode == "ollama":
         review_model = settings.ollama_review_model
     else:
@@ -87,6 +106,9 @@ def health() -> dict[str, str | int | bool]:
         "review_provider_configured": settings.review_provider,
         "gemini_enabled": settings.gemini_enabled,
         "gemini_free_tier_confirmed": settings.gemini_free_tier_confirmed,
+        "copilot_enabled": settings.copilot_enabled,
+        "copilot_free_tier_confirmed": settings.copilot_free_tier_confirmed,
+        "copilot_active": copilot_active,
         "local_parallelism": settings.local_parallelism,
         "max_calls_per_run": settings.max_calls_per_run,
     }
@@ -107,6 +129,10 @@ async def create_task(request: TaskRequest) -> TaskResponse:
     except GeminiQuotaError as exc:
         raise HTTPException(status_code=429, detail=str(exc)) from exc
     except GeminiError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    except CopilotQuotaError as exc:
+        raise HTTPException(status_code=429, detail=str(exc)) from exc
+    except CopilotError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     except Exception as exc:  # no silent fallback to a paid provider
         raise HTTPException(

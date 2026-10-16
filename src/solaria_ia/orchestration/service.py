@@ -115,10 +115,12 @@ class TaskService:
                     "Confirme o acesso gratuito ao GitHub Copilot antes de ativá-lo. "
                     "Nenhuma chamada externa foi realizada."
                 )
-            raise OrchestrationError(
-                "O adaptador GitHub Copilot ainda não está implementado; "
-                "nenhuma chamada externa foi realizada."
-            )
+            if self.external_reviewer_provider is None or self.usage_ledger is None:
+                raise OrchestrationError(
+                    "O adaptador GitHub Copilot ou controle de cota diário "
+                    "está indisponível; nenhuma chamada externa foi realizada."
+                )
+            selected_reviewer = self.external_reviewer_provider
 
         use_gemini = (
             route.collaboration == "review"
@@ -253,19 +255,28 @@ class TaskService:
         ledger = self.usage_ledger
         reservation: tuple[str, int] | None = None
 
-        if active_provider.name == "gemini":
+        if active_provider.name in {"gemini", "copilot"}:
             if ledger is None:
                 budget.abandon()
-                raise OrchestrationError("O controle de cotas do Gemini não está disponível.")
+                raise OrchestrationError(
+                    "O controle de cotas do provedor externo não está disponível."
+                )
 
             estimated_input = budget.estimate_input(system_prompt, user_prompt)
             reserve_tokens = estimated_input * 2 + output_limit
+            if active_provider.name == "gemini":
+                call_limit = self.settings.gemini_daily_call_limit
+                token_limit = self.settings.gemini_daily_token_limit
+            else:
+                call_limit = self.settings.copilot_daily_call_limit
+                token_limit = self.settings.copilot_daily_token_limit
+
             try:
                 reservation = ledger.reserve(
-                    provider="gemini",
+                    provider=active_provider.name,
                     estimated_tokens=reserve_tokens,
-                    call_limit=self.settings.gemini_daily_call_limit,
-                    token_limit=self.settings.gemini_daily_token_limit,
+                    call_limit=call_limit,
+                    token_limit=token_limit,
                 )
             except UsageLimitError as exc:
                 budget.abandon()
@@ -287,13 +298,13 @@ class TaskService:
                 try:
                     ledger.release(
                         usage_date=usage_date,
-                        provider="gemini",
+                        provider=active_provider.name,
                         reserved_tokens=reserved_tokens,
                     )
                 except Exception as exc:
                     raise OrchestrationError(
                         "A chamada falhou e não foi possível liberar a reserva "
-                        "de tokens do Gemini. Confira o ledger antes de tentar novamente."
+                        "de tokens do provedor externo. Confira o ledger antes de tentar novamente."
                     ) from exc
             raise
 
@@ -305,7 +316,7 @@ class TaskService:
             usage_date, reserved_tokens = reservation
             ledger.settle(
                 usage_date=usage_date,
-                provider="gemini",
+                provider=active_provider.name,
                 reserved_tokens=reserved_tokens,
                 actual_tokens=input_tokens + output_tokens,
             )

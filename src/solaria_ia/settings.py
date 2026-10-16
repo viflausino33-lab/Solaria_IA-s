@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     copilot_model: str = "auto"
     copilot_daily_call_limit: int = Field(default=1, ge=0, le=10)
     copilot_daily_token_limit: int = Field(default=4000, ge=256, le=20000)
+    copilot_max_ai_credits_per_run: float = Field(default=1.0, gt=0, le=100)
     gemini_api_key: SecretStr | None = None
     gemini_model: str = "gemini-3.5-flash-lite"
     gemini_daily_call_limit: int = Field(default=10, ge=0, le=100)
