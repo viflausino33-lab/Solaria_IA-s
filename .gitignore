@@ -21,3 +21,4 @@ dist/
 logs/
 artifacts/private/
 models/
+artifacts/usage.sqlite3

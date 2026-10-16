@@ -2,7 +2,15 @@ import re
 import time
 import uuid
 
+from solaria_ia.orchestration.budget import (
+    RunTokenBudget,
+    TokenBudgetExceeded,
+)
 from solaria_ia.providers.base import Provider
+from solaria_ia.providers.usage_ledger import (
+    DailyUsageLedger,
+    UsageLimitError,
+)
 from solaria_ia.routing.policy import classify_task
 from solaria_ia.schemas import StepMetric, TaskRequest, TaskResponse
 from solaria_ia.settings import Settings
@@ -63,16 +71,24 @@ class OrchestrationError(RuntimeError):
     pass
 
 
+class QuotaExceededError(OrchestrationError):
+    pass
+
+
 class TaskService:
     def __init__(
         self,
         settings: Settings,
         provider: Provider,
         reviewer_provider: Provider | None = None,
+        external_reviewer_provider: Provider | None = None,
+        usage_ledger: DailyUsageLedger | None = None,
     ) -> None:
         self.settings = settings
         self.provider = provider
         self.reviewer_provider = reviewer_provider or provider
+        self.external_reviewer_provider = external_reviewer_provider
+        self.usage_ledger = usage_ledger
 
     async def run(self, request: TaskRequest) -> TaskResponse:
         if len(request.task) > self.settings.max_input_chars:
@@ -86,6 +102,47 @@ class TaskService:
             max_output_tokens = self.settings.max_output_tokens
 
         route = classify_task(request, self.settings)
+        selected_reviewer = self.reviewer_provider
+
+        use_external_review = route.collaboration == "review" and request.privacy != "local_only"
+        if use_external_review and self.settings.review_provider == "copilot":
+            if not self.settings.copilot_enabled:
+                raise OrchestrationError(
+                    "GitHub Copilot está desativado; nenhuma chamada externa foi realizada."
+                )
+            if not self.settings.copilot_free_tier_confirmed:
+                raise OrchestrationError(
+                    "Confirme o acesso gratuito ao GitHub Copilot antes de ativá-lo. "
+                    "Nenhuma chamada externa foi realizada."
+                )
+            raise OrchestrationError(
+                "O adaptador GitHub Copilot ainda não está implementado; "
+                "nenhuma chamada externa foi realizada."
+            )
+
+        use_gemini = (
+            route.collaboration == "review"
+            and request.privacy != "local_only"
+            and self.settings.review_provider == "gemini"
+        )
+        if use_gemini:
+            if not self.settings.gemini_enabled:
+                raise OrchestrationError(
+                    "Gemini está desativado; nenhuma chamada externa foi realizada."
+                )
+            if not self.settings.gemini_free_tier_confirmed:
+                raise OrchestrationError(
+                    "Confirme o acesso gratuito ao Gemini antes de ativá-lo. "
+                    "Nenhuma chamada externa foi realizada."
+                )
+            if self.settings.gemini_api_key is None:
+                raise OrchestrationError("Configure SOLARIA_GEMINI_API_KEY no ambiente local.")
+            if self.external_reviewer_provider is None or self.usage_ledger is None:
+                raise OrchestrationError(
+                    "Adaptador Gemini ou controle de cota diário indisponível."
+                )
+            selected_reviewer = self.external_reviewer_provider
+
         # Enforce a strict call count before any inference is started.
         planned_calls = 1 if route.collaboration == "single" else 3
         if planned_calls > self.settings.max_calls_per_run:
@@ -99,6 +156,7 @@ class TaskService:
         run_id = str(uuid.uuid4())
         start = time.perf_counter()
         steps: list[StepMetric] = []
+        budget = RunTokenBudget(limit=self.settings.max_total_tokens_per_run)
 
         answer_result = await self._generate(
             role="specialist",
@@ -106,6 +164,7 @@ class TaskService:
             user_prompt=request.task,
             max_output_tokens=max_output_tokens,
             steps=steps,
+            budget=budget,
         )
         answer = answer_result.text
 
@@ -121,7 +180,8 @@ class TaskService:
                     self.settings.review_max_output_tokens,
                 ),
                 steps=steps,
-                provider=self.reviewer_provider,
+                provider=selected_reviewer,
+                budget=budget,
             )
             critic_decision = _critic_decision(review_result.text)
 
@@ -144,6 +204,7 @@ class TaskService:
                     user_prompt=final_prompt,
                     max_output_tokens=max_output_tokens,
                     steps=steps,
+                    budget=budget,
                 )
                 answer = final_result.text
 
@@ -174,15 +235,81 @@ class TaskService:
         user_prompt: str,
         max_output_tokens: int,
         steps: list[StepMetric],
+        budget: RunTokenBudget,
         provider: Provider | None = None,
     ):
         start = time.perf_counter()
         active_provider = provider or self.provider
-        result = await active_provider.generate(
-            system_prompt=system_prompt,
-            user_prompt=user_prompt,
-            max_output_tokens=max_output_tokens,
-        )
+
+        try:
+            output_limit = budget.prepare(
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                requested_output_tokens=max_output_tokens,
+            )
+        except TokenBudgetExceeded as exc:
+            raise OrchestrationError(str(exc)) from exc
+
+        ledger = self.usage_ledger
+        reservation: tuple[str, int] | None = None
+
+        if active_provider.name == "gemini":
+            if ledger is None:
+                budget.abandon()
+                raise OrchestrationError("O controle de cotas do Gemini não está disponível.")
+
+            estimated_input = budget.estimate_input(system_prompt, user_prompt)
+            reserve_tokens = estimated_input * 2 + output_limit
+            try:
+                reservation = ledger.reserve(
+                    provider="gemini",
+                    estimated_tokens=reserve_tokens,
+                    call_limit=self.settings.gemini_daily_call_limit,
+                    token_limit=self.settings.gemini_daily_token_limit,
+                )
+            except UsageLimitError as exc:
+                budget.abandon()
+                raise QuotaExceededError(str(exc)) from exc
+            except BaseException:
+                budget.abandon()
+                raise
+
+        try:
+            result = await active_provider.generate(
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                max_output_tokens=output_limit,
+            )
+        except BaseException:
+            budget.abandon()
+            if reservation is not None and ledger is not None:
+                usage_date, reserved_tokens = reservation
+                try:
+                    ledger.release(
+                        usage_date=usage_date,
+                        provider="gemini",
+                        reserved_tokens=reserved_tokens,
+                    )
+                except Exception as exc:
+                    raise OrchestrationError(
+                        "A chamada falhou e não foi possível liberar a reserva "
+                        "de tokens do Gemini. Confira o ledger antes de tentar novamente."
+                    ) from exc
+            raise
+
+        input_tokens = result.input_tokens_estimated or _approx_tokens(system_prompt + user_prompt)
+        output_tokens = result.output_tokens_estimated or _approx_tokens(result.text)
+        budget.record(input_tokens, output_tokens)
+
+        if reservation is not None and ledger is not None:
+            usage_date, reserved_tokens = reservation
+            ledger.settle(
+                usage_date=usage_date,
+                provider="gemini",
+                reserved_tokens=reserved_tokens,
+                actual_tokens=input_tokens + output_tokens,
+            )
+
         elapsed = int((time.perf_counter() - start) * 1000)
         steps.append(
             StepMetric(
@@ -190,10 +317,8 @@ class TaskService:
                 provider=result.provider,
                 model=result.model,
                 elapsed_ms=elapsed,
-                input_tokens_estimated=result.input_tokens_estimated
-                or _approx_tokens(system_prompt + user_prompt),
-                output_tokens_estimated=result.output_tokens_estimated
-                or _approx_tokens(result.text),
+                input_tokens_estimated=input_tokens,
+                output_tokens_estimated=output_tokens,
             )
         )
         return result
